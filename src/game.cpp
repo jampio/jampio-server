@@ -1,5 +1,5 @@
 // sv_game.c -- interface to the game dll
-#include <jampio/shared/botlib.h>
+#include <jampio/botlib/botlib.h>
 #include <jampio/common/MiniHeap.h>
 #include <jampio/common/timing.h>
 #include <jampio/common/stringed_ingame.h>

@@ -1,6 +1,6 @@
 // sv_bot.c
 #include <jampio/common/com.h>
-#include <jampio/shared/botlib.h>
+#include <jampio/botlib/botlib.h>
 #include <jampio/shared/maskflags.h>
 #include <jampio/common/memory.h>
 #include <jampio/common/cm/cm.h>
@@ -270,7 +270,7 @@ void BotDrawDebugPolygons(CvarSystem& cvars, void (*drawPoly)(int color, int num
 BotImport_Print
 ==================
 */
-void QDECL BotImport_Print(int type, char *fmt, ...)
+void QDECL BotImport_Print(int type, const char *fmt, ...)
 {
 	char str[2048];
 	va_list ap;
@@ -443,7 +443,6 @@ void Bot_FreeMemoryGame(void *ptr) {
 BotImport_GetMemory
 ==================
 */
-// TODO: remove
 void *BotImport_GetMemory(int size) {
 #if 0
 	void *ptr;
@@ -451,7 +450,6 @@ void *BotImport_GetMemory(int size) {
 	ptr = Z_Malloc( size, TAG_BOTLIB, qtrue );
 	return ptr;
 #endif
-	Com_Printf("DEPRECATED: Using BotImport_GetMemory\n");
 	return malloc(size);
 }
 
@@ -460,9 +458,7 @@ void *BotImport_GetMemory(int size) {
 BotImport_FreeMemory
 ==================
 */
-// TODO: remove
 void BotImport_FreeMemory(void *ptr) {
-	Com_Printf("DEPRECATED: Using BotImport_FreeMemory\n");
 	#if 0
 	Z_Free(ptr);
 	#endif
@@ -474,7 +470,6 @@ void BotImport_FreeMemory(void *ptr) {
 BotImport_HunkAlloc
 =================
 */
-// TODO: remove
 void *BotImport_HunkAlloc(int size) {
 #if 0
 	if (Hunk_CheckMark()) {
@@ -482,7 +477,6 @@ void *BotImport_HunkAlloc(int size) {
 	}
 	return Hunk_Alloc( size, h_high );
 #endif
-	Com_Printf("DEPRECATED: BotImport_HunkAlloc\n");
 	return malloc(size);
 }
 

@@ -1,4 +1,9 @@
 #include <jampio/shared/eflags.h>
+#include <jampio/common/msg.h>
+#include <jampio/common/protocol.h>
+#include <jampio/common/cm/cm.h>
+#include <jampio/common/com_vars.h>
+#include <jampio/common/sys.h>
 #include "server.h"
 
 
@@ -205,8 +210,8 @@ static void SV_WriteSnapshotToClient( client_t *client, msg_t *msg ) {
 	SV_EmitPacketEntities (oldframe, frame, msg);
 
 	// padding for rate debugging
-	if ( sv_padPackets->integer ) {
-		for ( i = 0 ; i < sv_padPackets->integer ; i++ ) {
+	if ( sv_padPackets->integer() ) {
+		for ( i = 0 ; i < sv_padPackets->integer() ; i++ ) {
 			MSG_WriteByte (msg, svc_nop);
 		}
 	}
@@ -389,7 +394,7 @@ static void SV_AddEntitiesVisibleFromPoint( vec3_t origin, clientSnapshot_t *fra
 			continue;
 		}
 
-		if (com_RMG && com_RMG->integer)
+		if (com_RMG && com_RMG->integer())
 		{
 			VectorAdd(ent->r.absmax, ent->r.absmin, difference);
 			VectorScale(difference, 0.5f, difference);
@@ -550,7 +555,7 @@ static void SV_BuildClientSnapshot( client_t *client ) {
 
 		if (veh && veh->playerState)
 		{ //Now VMA it and we've got ourselves a playerState
-			playerState_t *vps = ((playerState_t *)VM_ArgPtr((int)veh->playerState));
+			playerState_t *vps = veh->playerState;
 
             frame->vps = *vps;
 #ifdef _ONEBIT_COMBO
@@ -618,7 +623,7 @@ to take to clear, based on the current rate
 ====================
 */
 #define	HEADER_RATE_BYTES	48		// include our header, IP header, and some overhead
-static int SV_RateMsec( client_t *client, int messageSize ) {
+static int SV_RateMsec(CvarSystem& cvars, client_t *client, int messageSize) {
 	int		rate;
 	int		rateMsec;
 
@@ -627,12 +632,12 @@ static int SV_RateMsec( client_t *client, int messageSize ) {
 		messageSize = 1500;
 	}
 	rate = client->rate;
-	if ( sv_maxRate->integer ) {
-		if ( sv_maxRate->integer < 1000 ) {
-			Cvar_Set( "sv_MaxRate", "1000" );
+	if ( sv_maxRate->integer() ) {
+		if ( sv_maxRate->integer() < 1000 ) {
+			cvars.Set(sv_maxRate->name(), "1000");
 		}
-		if ( sv_maxRate->integer < rate ) {
-			rate = sv_maxRate->integer;
+		if ( sv_maxRate->integer() < rate ) {
+			rate = sv_maxRate->integer();
 		}
 	}
 	rateMsec = ( messageSize + HEADER_RATE_BYTES ) * 1000 / rate;
@@ -647,7 +652,7 @@ SV_SendMessageToClient
 Called by SV_SendClientSnapshot and SV_SendClientGameState
 =======================
 */
-void SV_SendMessageToClient( msg_t *msg, client_t *client ) {
+void SV_SendMessageToClient(CvarSystem& cvars, msg_t *msg, client_t *client) {
 	int			rateMsec;
 
 	// MW - my attempt to fix illegible server message errors caused by 
@@ -677,7 +682,7 @@ void SV_SendMessageToClient( msg_t *msg, client_t *client ) {
 	}
 
 	// normal rate / snapshotMsec calculation
-	rateMsec = SV_RateMsec( client, msg->cursize );
+	rateMsec = SV_RateMsec(cvars, client, msg->cursize);
 
 	if ( rateMsec < client->snapshotMsec ) {
 		// never send more packets than this, no matter what the rate is at
@@ -801,12 +806,12 @@ void SV_SendClientSnapshot( client_t *client ) {
 SV_SendClientMessages
 =======================
 */
-void SV_SendClientMessages( void ) {
+void SV_SendClientMessages(CvarSystem& cvars) {
 	int			i;
 	client_t	*c;
 
 	// send a message to each connected client
-	for (i=0, c = svs.clients ; i < sv_maxclients->integer ; i++, c++) {
+	for (i=0, c = svs.clients ; i < sv_maxclients->integer() ; i++, c++) {
 		if (!c->state) {
 			continue;		// not connected
 		}
@@ -819,7 +824,7 @@ void SV_SendClientMessages( void ) {
 		// was too large to send at once
 		if ( c->netchan.unsentFragments ) {
 			c->nextSnapshotTime = svs.time + 
-				SV_RateMsec( c, c->netchan.unsentLength - c->netchan.unsentFragmentStart );
+				SV_RateMsec(cvars, c, c->netchan.unsentLength - c->netchan.unsentFragmentStart );
 			SV_Netchan_TransmitNextFragment( &c->netchan );
 			continue;
 		}

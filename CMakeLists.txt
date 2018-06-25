@@ -12,13 +12,16 @@ add_executable(jampioded
 	src/bot.cpp
 	src/ccmds.cpp
 	src/client.cpp
+	src/entry.cpp
 	src/game.cpp
 	src/main.cpp
 	src/net_chan.cpp
 	src/snapshot.cpp
+	src/StaticArgs.cpp
 	src/world.cpp
 )
 include(GNUInstallDirs)
 target_link_libraries(jampioded jampiocommonded)
 target_include_directories(jampioded PRIVATE ${jampiocommonded_INCLUDE})
+set_target_properties(jampioded PROPERTIES CXX_STANDARD 17)
 install(TARGETS jampioded DESTINATION ${CMAKE_INSTALL_BINDIR})

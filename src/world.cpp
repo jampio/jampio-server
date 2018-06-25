@@ -5,6 +5,8 @@
 #include <jampio/shared/eflags.h>
 #include <jampio/common/g2/api.h>
 #include <jampio/common/MiniHeap_globals.h>
+#include <jampio/common/cm/cm.h>
+#include <jampio/common/com_vars.h>
 #include "server.h"
 
 /*
@@ -729,14 +731,14 @@ Ghoul2 Insert Start
 			//I would think that you could trace from trace.endpos instead of clip->start, but that causes it to miss sometimes.. Not sure what it's off, but if it could be done like that, it would probably
 			//be faster.
 #ifndef FINAL_BUILD
-			if (sv_showghoultraces->integer)
+			if (sv_showghoultraces->integer())
 			{
 				Com_Printf( "Ghoul2 trace   lod=%1d   length=%6.0f   to %s\n",clip->useLod,VectorDistance(clip->start, clip->end),(*((CGhoul2Info_v *)touch->ghoul2))[0].mFileName);
 			}
 #endif
 
 			if (com_optvehtrace &&
-				com_optvehtrace->integer &&
+				com_optvehtrace->integer() &&
 				touch->s.eType == ET_NPC &&
 				touch->s.NPC_class == CLASS_VEHICLE &&
 				touch->m_pVehicle)

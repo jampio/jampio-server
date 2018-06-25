@@ -1,5 +1,8 @@
 #include <jampio/shared/configstrings.h>
 #include <jampio/common/stringed_ingame.h>
+#include <jampio/common/com_vars.h>
+#include <jampio/common/fs.h>
+#include <jampio/common/interface/server.h>
 #include "server.h"
 
 /*
@@ -38,26 +41,26 @@ SV_GetPlayerByName
 Returns the player with name from Cmd_Argv(1)
 ==================
 */
-static client_t *SV_GetPlayerByName( void ) {
+static client_t *SV_GetPlayerByName(CommandArgs& args) {
 	client_t	*cl;
 	int			i;
 	const char		*s;
 	char		cleanName[64];
 
 	// make sure server is running
-	if ( !com_sv_running->integer ) {
+	if ( !com_sv_running->integer() ) {
 		return NULL;
 	}
 
-	if ( Cmd_Argc() < 2 ) {
+	if ( args.Argc() < 2 ) {
 		Com_Printf( "No player specified.\n" );
 		return NULL;
 	}
 
-	s = Cmd_Argv(1);
+	s = args.Argv(1);
 
 	// check for a name match
-	for ( i=0, cl=svs.clients ; i < sv_maxclients->integer ; i++,cl++ ) {
+	for ( i=0, cl=svs.clients ; i < sv_maxclients->integer() ; i++,cl++ ) {
 		if ( !cl->state ) {
 			continue;
 		}
@@ -84,23 +87,23 @@ SV_GetPlayerByNum
 Returns the player with idnum from Cmd_Argv(1)
 ==================
 */
-static client_t *SV_GetPlayerByNum( void ) {
+static client_t *SV_GetPlayerByNum(CommandArgs& args) {
 	client_t	*cl;
 	int			i;
 	int			idnum;
 	const char		*s;
 
 	// make sure server is running
-	if ( !com_sv_running->integer ) {
+	if ( !com_sv_running->integer() ) {
 		return NULL;
 	}
 
-	if ( Cmd_Argc() < 2 ) {
+	if ( args.Argc() < 2 ) {
 		Com_Printf( "No player specified.\n" );
 		return NULL;
 	}
 
-	s = Cmd_Argv(1);
+	s = args.Argv(1);
 
 	for (i = 0; s[i]; i++) {
 		if (s[i] < '0' || s[i] > '9') {
@@ -109,7 +112,7 @@ static client_t *SV_GetPlayerByNum( void ) {
 		}
 	}
 	idnum = atoi( s );
-	if ( idnum < 0 || idnum >= sv_maxclients->integer ) {
+	if ( idnum < 0 || idnum >= sv_maxclients->integer() ) {
 		Com_Printf( "Bad client slot: %i\n", idnum );
 		return NULL;
 	}
@@ -133,14 +136,14 @@ SV_Map_f
 Restart the server on a different map
 ==================
 */
-static void SV_Map_f( void ) {
+static void SV_Map_f(CvarSystem& cvars, CommandArgs& args) {
 	const char		*cmd;
 	const char		*map;
 	qboolean	killBots, cheat;
 	char		expanded[MAX_QPATH];
 	char		mapname[MAX_QPATH];
 
-	map = Cmd_Argv(1);
+	map = args.Argv(1);
 	if ( !map ) {
 		return;
 	}
@@ -161,14 +164,14 @@ static void SV_Map_f( void ) {
 #endif
 
 	// force latched values to get set
-	Cvar_Get ("g_gametype", "0", CVAR_SERVERINFO | CVAR_LATCH );
+	cvars.Get ("g_gametype", "0", CVAR_SERVERINFO | CVAR_LATCH );
 
-	cmd = Cmd_Argv(0);
+	cmd = args.Argv(0);
 	if( Q_stricmpn( cmd, "sp", 2 ) == 0 ) {
-		Cvar_SetValue( "g_gametype", GT_SINGLE_PLAYER );
-		Cvar_SetValue( "g_doWarmup", 0 );
+		cvars.SetValue( "g_gametype", GT_SINGLE_PLAYER );
+		cvars.SetValue( "g_doWarmup", 0 );
 		// may not set sv_maxclients directly, always set latched
-		Cvar_SetLatched( "sv_maxclients", "8" );
+		cvars.SetLatched( "sv_maxclients", "8" );
 		cmd += 2;
 		cheat = qfalse;
 		killBots = qtrue;
@@ -214,9 +217,9 @@ static void SV_Map_f( void ) {
 	// cheats will not be allowed.  If started with "devmap <levelname>"
 	// then cheats will be allowed
 	if ( cheat ) {
-		Cvar_Set( "sv_cheats", "1" );
+		cvars.Set( "sv_cheats", "1" );
 	} else {
-		Cvar_Set( "sv_cheats", "0" );
+		cvars.Set( "sv_cheats", "0" );
 	}
 }
 
@@ -229,10 +232,10 @@ Completely restarts a level, but doesn't send a new gamestate to the clients.
 This allows fair starts with variable load times.
 ================
 */
-static void SV_MapRestart_f( void ) {
+static void SV_MapRestart_f(CvarSystem& cvars, CommandArgs& args) {
 	int			i;
 	client_t	*client;
-	char		*denied;
+	const char	*denied;
 	qboolean	isBot;
 	int			delay;
 
@@ -242,7 +245,7 @@ static void SV_MapRestart_f( void ) {
 	}
 
 	// make sure server is running
-	if ( !com_sv_running->integer ) {
+	if ( !com_sv_running->integer() ) {
 		Com_Printf( "Server is not running.\n" );
 		return;
 	}
@@ -251,8 +254,8 @@ static void SV_MapRestart_f( void ) {
 		return;
 	}
 
-	if (Cmd_Argc() > 1 ) {
-		delay = atoi( Cmd_Argv(1) );
+	if (args.Argc() > 1 ) {
+		delay = atoi( args.Argv(1) );
 	}
 	else {
 		delay = 5;
@@ -265,12 +268,12 @@ static void SV_MapRestart_f( void ) {
 
 	// check for changes in variables that can't just be restarted
 	// check for maxclients change
-	if ( sv_maxclients->modified || sv_gametype->modified ) {
+	if ( sv_maxclients->modified() || sv_gametype->modified() ) {
 		char	mapname[MAX_QPATH];
 
 		Com_Printf( "variable change -- restarting.\n" );
 		// restart the map the slow way
-		Q_strncpyz( mapname, Cvar_VariableString( "mapname" ), sizeof( mapname ) );
+		Q_strncpyz( mapname, cvars.VariableString( "mapname" ), sizeof( mapname ) );
 
 		SV_SpawnServer( mapname, qfalse, eForceReload_NOTHING );
 		return;
@@ -283,7 +286,7 @@ static void SV_MapRestart_f( void ) {
 	// generate a new serverid
 	sv.restartedServerId = sv.serverId;
 	sv.serverId = com_frameTime;
-	Cvar_Set( "sv_serverid", va("%i", sv.serverId ) );
+	cvars.Set( "sv_serverid", va("%i", sv.serverId ) );
 
 	// reset all the vm data in place without changing memory allocation
 	// note that we do NOT set sv.state = SS_LOADING, so configstrings that
@@ -295,7 +298,7 @@ static void SV_MapRestart_f( void ) {
 
 	// run a few frames to allow everything to settle
 	for ( i = 0 ;i < 3 ; i++ ) {
-		VM_Call( gvm, GAME_RUN_FRAME, svs.time );
+		gvm->call(GAME_RUN_FRAME, svs.time);
 		svs.time += 100;
 	}
 
@@ -303,7 +306,7 @@ static void SV_MapRestart_f( void ) {
 	sv.restarting = qfalse;
 
 	// connect and begin all the clients
-	for (i=0 ; i<sv_maxclients->integer ; i++) {
+	for (i=0 ; i<sv_maxclients->integer() ; i++) {
 		client = &svs.clients[i];
 
 		// send the new gamestate to all connected clients
@@ -321,7 +324,7 @@ static void SV_MapRestart_f( void ) {
 		SV_AddServerCommand( client, "map_restart\n" );
 
 		// connect the client again, without the firstTime flag
-		denied = (char *)VM_ExplicitArgPtr( gvm, VM_Call( gvm, GAME_CLIENT_CONNECT, i, qfalse, isBot ) );
+		denied = (const char *) gvm->call(GAME_CLIENT_CONNECT, i, qfalse, isBot);
 		if ( denied ) {
 			// this generally shouldn't happen, because the client
 			// was connected before the level change
@@ -336,7 +339,7 @@ static void SV_MapRestart_f( void ) {
 	}	
 
 	// run another frame to allow things to look at all the players
-	VM_Call( gvm, GAME_RUN_FRAME, svs.time );
+	gvm->call(GAME_RUN_FRAME, svs.time);
 	svs.time += 100;
 }
 
@@ -356,13 +359,13 @@ static client_t *SV_GetPlayerByFedName( const char *name )
 	char		cleanName[64];
 
 	// make sure server is running
-	if ( !com_sv_running->integer )
+	if ( !com_sv_running->integer() )
 	{
 		return NULL;
 	}
 
 	// check for a name match
-	for ( i=0, cl=svs.clients ; i < sv_maxclients->integer ; i++,cl++ )
+	for ( i=0, cl=svs.clients ; i < sv_maxclients->integer() ; i++,cl++ )
 	{
 		if ( !cl->state )
 		{
@@ -390,7 +393,7 @@ static void SV_KickByName( const char *name )
 	int			i;
 
 	// make sure server is running
-	if ( !com_sv_running->integer )
+	if ( !com_sv_running->integer() )
 	{
 		return;
 	}
@@ -400,7 +403,7 @@ static void SV_KickByName( const char *name )
 	{
 		if ( !Q_stricmp(name, "all") )
 		{
-			for ( i=0, cl=svs.clients ; i < sv_maxclients->integer ; i++,cl++ )
+			for ( i=0, cl=svs.clients ; i < sv_maxclients->integer() ; i++,cl++ )
 			{
 				if ( !cl->state )
 				{
@@ -416,7 +419,7 @@ static void SV_KickByName( const char *name )
 		}
 		else if ( !Q_stricmp(name, "allbots") )
 		{
-			for ( i=0, cl=svs.clients ; i < sv_maxclients->integer ; i++,cl++ )
+			for ( i=0, cl=svs.clients ; i < sv_maxclients->integer() ; i++,cl++ )
 			{
 				if ( !cl->state )
 				{
@@ -450,30 +453,30 @@ SV_Kick_f
 Kick a user off of the server  FIXME: move to game
 ==================
 */
-static void SV_Kick_f( void ) {
+static void SV_Kick_f(CommandArgs& args) {
 	client_t	*cl;
 	int			i;
 
 	// make sure server is running
-	if ( !com_sv_running->integer ) {
+	if ( !com_sv_running->integer() ) {
 		Com_Printf( "Server is not running.\n" );
 		return;
 	}
 
-	if ( Cmd_Argc() != 2 ) {
+	if ( args.Argc() != 2 ) {
 		Com_Printf ("Usage: kick <player name>\nkick all = kick everyone\nkick allbots = kick all bots\n");
 		return;
 	}
 
-	if (!Q_stricmp(Cmd_Argv(1), "Padawan"))
+	if (!Q_stricmp(args.Argv(1), "Padawan"))
 	{ //if you try to kick the default name, also try to kick ""
 		SV_KickByName("");
 	}
 
-	cl = SV_GetPlayerByName();
+	cl = SV_GetPlayerByName(args);
 	if ( !cl ) {
-		if ( !Q_stricmp(Cmd_Argv(1), "all") ) {
-			for ( i=0, cl=svs.clients ; i < sv_maxclients->integer ; i++,cl++ ) {
+		if ( !Q_stricmp(args.Argv(1), "all") ) {
+			for ( i=0, cl=svs.clients ; i < sv_maxclients->integer() ; i++,cl++ ) {
 				if ( !cl->state ) {
 					continue;
 				}
@@ -484,8 +487,8 @@ static void SV_Kick_f( void ) {
 				cl->lastPacketTime = svs.time;	// in case there is a funny zombie
 			}
 		}
-		else if ( !Q_stricmp(Cmd_Argv(1), "allbots") ) {
-			for ( i=0, cl=svs.clients ; i < sv_maxclients->integer ; i++,cl++ ) {
+		else if ( !Q_stricmp(args.Argv(1), "allbots") ) {
+			for ( i=0, cl=svs.clients ; i < sv_maxclients->integer() ; i++,cl++ ) {
 				if ( !cl->state ) {
 					continue;
 				}
@@ -631,21 +634,21 @@ SV_KickNum_f
 Kick a user off of the server  FIXME: move to game
 ==================
 */
-static void SV_KickNum_f( void ) {
+static void SV_KickNum_f(CommandArgs& args) {
 	client_t	*cl;
 
 	// make sure server is running
-	if ( !com_sv_running->integer ) {
+	if ( !com_sv_running->integer() ) {
 		Com_Printf( "Server is not running.\n" );
 		return;
 	}
 
-	if ( Cmd_Argc() != 2 ) {
+	if ( args.Argc() != 2 ) {
 		Com_Printf ("Usage: kicknum <client number>\n");
 		return;
 	}
 
-	cl = SV_GetPlayerByNum();
+	cl = SV_GetPlayerByNum(args);
 	if ( !cl ) {
 		return;
 	}
@@ -664,7 +667,7 @@ static void SV_KickNum_f( void ) {
 SV_Status_f
 ================
 */
-static void SV_Status_f( void ) 
+static void SV_Status_f(CommandArgs& args) 
 {
 	int				i;
 	client_t		*cl;
@@ -675,25 +678,25 @@ static void SV_Status_f( void )
 	qboolean		avoidTruncation = qfalse;
 
 	// make sure server is running
-	if ( !com_sv_running->integer ) 
+	if ( !com_sv_running->integer() ) 
 	{
 		Com_Printf( SE_GetString("STR_SERVER_SERVER_NOT_RUNNING") );
 		return;
 	}
 
-	if ( Cmd_Argc() > 1 )
+	if ( args.Argc() > 1 )
 	{
-		if (!Q_stricmp("notrunc", Cmd_Argv(1)))
+		if (!Q_stricmp("notrunc", args.Argv(1)))
 		{
 			avoidTruncation = qtrue;
 		}
 	}
 
-	Com_Printf ("map: %s\n", sv_mapname->string );
+	Com_Printf ("map: %s\n", sv_mapname->string() );
 
 	Com_Printf ("num score ping name            lastmsg address               qport rate\n");
 	Com_Printf ("--- ----- ---- --------------- ------- --------------------- ----- -----\n");
-	for (i=0,cl=svs.clients ; i < sv_maxclients->integer ; i++,cl++)
+	for (i=0,cl=svs.clients ; i < sv_maxclients->integer() ; i++,cl++)
 	{
 		if (!cl->state)
 		{
@@ -752,27 +755,27 @@ static void SV_Status_f( void )
 SV_ConSay_f
 ==================
 */
-static void SV_ConSay_f(void) {
-	char	*p;
+static void SV_ConSay_f(CommandArgs& args) {
 	char	text[1024];
 
-	if( !com_dedicated->integer ) {
+	if( !com_dedicated->integer() ) {
 		Com_Printf( "Server is not dedicated.\n" );
 		return;
 	}
 
 	// make sure server is running
-	if ( !com_sv_running->integer ) {
+	if ( !com_sv_running->integer() ) {
 		Com_Printf( "Server is not running.\n" );
 		return;
 	}
 
-	if ( Cmd_Argc () < 2 ) {
+	if ( args.Argc () < 2 ) {
 		return;
 	}
 
 	strcpy (text, "Server: ");
-	p = Cmd_Args();
+	auto arg_string = args.Args();
+	auto p = arg_string.data();
 
 	if ( *p == '"' ) {
 		p++;
@@ -812,14 +815,14 @@ static const char *forceToggleNamePrints[] =
 SV_ForceToggle_f
 ==================
 */
-void SV_ForceToggle_f(void)
+void SV_ForceToggle_f(CvarSystem& cvars, CommandArgs& args)
 {
 	int i = 0;
-	int fpDisabled = Cvar_VariableValue("g_forcePowerDisable");
+	int fpDisabled = cvars.VariableValue("g_forcePowerDisable");
 	int targetPower = 0;
 	const char *powerDisabled = "Enabled";
 
-	if ( Cmd_Argc () < 2 )
+	if ( args.Argc () < 2 )
 	{ //no argument supplied, spit out a list of force powers and their numbers
 		while (i < NUM_FORCE_POWERS)
 		{
@@ -840,7 +843,7 @@ void SV_ForceToggle_f(void)
 		return;
 	}
 
-	targetPower = atoi(Cmd_Argv(1));
+	targetPower = atoi(args.Argv(1));
 
 	if (targetPower < 0 || targetPower >= NUM_FORCE_POWERS)
 	{
@@ -859,7 +862,7 @@ void SV_ForceToggle_f(void)
 		fpDisabled |= (1 << targetPower);
 	}
 
-	Cvar_Set("g_forcePowerDisable", va("%i", fpDisabled));
+	cvars.Set("g_forcePowerDisable", va("%i", fpDisabled));
 
 	Com_Printf("%s has been %s.\n", forceToggleNamePrints[targetPower], powerDisabled);
 }
@@ -871,7 +874,7 @@ SV_Heartbeat_f
 Also called by SV_DropClient, SV_DirectConnect, and SV_SpawnServer
 ==================
 */
-void SV_Heartbeat_f( void ) {
+void SV_Heartbeat_f(void) {
 	svs.nextHeartbeatTime = -9999999;
 }
 
@@ -883,10 +886,11 @@ SV_Serverinfo_f
 Examine the serverinfo string
 ===========
 */
-static void SV_Serverinfo_f( void ) {
-	Com_Printf ("Server info settings:\n");
-	Info_Print ( Cvar_InfoString( CVAR_SERVERINFO ) );
-	if ( !com_sv_running->integer ) {
+static void SV_Serverinfo_f(CvarSystem& cvars) {
+	Com_Printf("Server info settings:\n");
+	auto info = cvars.InfoString(CVAR_SERVERINFO);
+	Info_Print(info.data());
+	if ( !com_sv_running->integer() ) {
 		Com_Printf( "Server is not running.\n" );
 	}
 }
@@ -899,9 +903,10 @@ SV_Systeminfo_f
 Examine or change the serverinfo string
 ===========
 */
-static void SV_Systeminfo_f( void ) {
-	Com_Printf ("System info settings:\n");
-	Info_Print ( Cvar_InfoString( CVAR_SYSTEMINFO ) );
+static void SV_Systeminfo_f(CvarSystem& cvars) {
+	Com_Printf("System info settings:\n");
+	auto info = cvars.InfoString(CVAR_SYSTEMINFO);
+	Info_Print(info.data());
 }
 
 
@@ -912,21 +917,21 @@ SV_DumpUser_f
 Examine all a users info strings FIXME: move to game
 ===========
 */
-static void SV_DumpUser_f( void ) {
+static void SV_DumpUser_f(CommandArgs& args) {
 	client_t	*cl;
 
 	// make sure server is running
-	if ( !com_sv_running->integer ) {
+	if ( !com_sv_running->integer() ) {
 		Com_Printf( "Server is not running.\n" );
 		return;
 	}
 
-	if ( Cmd_Argc() != 2 ) {
+	if ( args.Argc() != 2 ) {
 		Com_Printf ("Usage: info <userid>\n");
 		return;
 	}
 
-	cl = SV_GetPlayerByName();
+	cl = SV_GetPlayerByName(args);
 	if ( !cl ) {
 		return;
 	}
@@ -953,7 +958,7 @@ static void SV_KillServer_f( void ) {
 SV_AddOperatorCommands
 ==================
 */
-void SV_AddOperatorCommands( void ) {
+void SV_AddOperatorCommands(CvarSystem& cvars, CommandSystem& cmd) {
 	static qboolean	initialized;
 
 	if ( initialized ) {
@@ -961,36 +966,62 @@ void SV_AddOperatorCommands( void ) {
 	}
 	initialized = qtrue;
 
-	Cmd_AddCommand ("heartbeat", SV_Heartbeat_f);
-	Cmd_AddCommand ("kick", SV_Kick_f);
+	cmd.AddCommand ("heartbeat", [](auto& args) {
+		SV_Heartbeat_f();
+	});
+	cmd.AddCommand ("kick", SV_Kick_f);
 #ifdef USE_CD_KEY
-	Cmd_AddCommand ("banUser", SV_Ban_f);
-	Cmd_AddCommand ("banClient", SV_BanNum_f);
+	cmd.AddCommand ("banUser", SV_Ban_f);
+	cmd.AddCommand ("banClient", SV_BanNum_f);
 #endif	// USE_CD_KEY
 
-	Cmd_AddCommand ("clientkick", SV_KickNum_f);
-	Cmd_AddCommand ("status", SV_Status_f);
-	Cmd_AddCommand ("serverinfo", SV_Serverinfo_f);
-	Cmd_AddCommand ("systeminfo", SV_Systeminfo_f);
-	Cmd_AddCommand ("dumpuser", SV_DumpUser_f);
-	Cmd_AddCommand ("map_restart", SV_MapRestart_f);
-	Cmd_AddCommand ("sectorlist", SV_SectorList_f);
-	Cmd_AddCommand ("map", SV_Map_f);
+	cmd.AddCommand ("clientkick", SV_KickNum_f);
+	cmd.AddCommand ("status", SV_Status_f);
+	cmd.AddCommand ("serverinfo", [&](auto& args) {
+		SV_Serverinfo_f(cvars);
+	});
+	cmd.AddCommand ("systeminfo", [&](auto& args) {
+		SV_Systeminfo_f(cvars);
+	});
+	cmd.AddCommand ("dumpuser", SV_DumpUser_f);
+	cmd.AddCommand ("map_restart", [&](auto& args) {
+		SV_MapRestart_f(cvars, args);
+	});
+	cmd.AddCommand ("sectorlist", [](auto& args) {
+		SV_SectorList_f();
+	});
+	cmd.AddCommand ("map", [&](auto& args) {
+		SV_Map_f(cvars, args);
+	});
 #ifndef PRE_RELEASE_DEMO
-	Cmd_AddCommand ("devmap", SV_Map_f);
-	Cmd_AddCommand ("spmap", SV_Map_f);
-	Cmd_AddCommand ("spdevmap", SV_Map_f);
-//	Cmd_AddCommand ("devmapbsp", SV_Map_f);	// not used in MP codebase, no server BSP_cacheing
-	Cmd_AddCommand ("devmapmdl", SV_Map_f);
-	Cmd_AddCommand ("devmapall", SV_Map_f);
+	cmd.AddCommand ("devmap", [&](auto& args) {
+		SV_Map_f(cvars, args);
+	});
+	cmd.AddCommand ("spmap", [&](auto& args) {
+		SV_Map_f(cvars, args);
+	});
+	cmd.AddCommand ("spdevmap", [&](auto& args) {
+		SV_Map_f(cvars, args);
+	});
+	cmd.AddCommand ("devmapmdl", [&](auto& args) {
+		SV_Map_f(cvars, args);
+	});
+	cmd.AddCommand ("devmapall", [&](auto& args) {
+		SV_Map_f(cvars, args);
+	});
+//	cmd.AddCommand ("devmapbsp", SV_Map_f);	// not used in MP codebase, no server BSP_cacheing
 #endif
-	Cmd_AddCommand ("killserver", SV_KillServer_f);
+	cmd.AddCommand ("killserver", [](auto& args) {
+		SV_KillServer_f();
+	});
 //	if( com_dedicated->integer ) 
 	{
-		Cmd_AddCommand ("svsay", SV_ConSay_f);
+		cmd.AddCommand ("svsay", SV_ConSay_f);
 	}
 
-	Cmd_AddCommand ("forcetoggle", SV_ForceToggle_f);
+	cmd.AddCommand ("forcetoggle", [&](auto& args) {
+		SV_ForceToggle_f(cvars, args);
+	});
 }
 
 /*

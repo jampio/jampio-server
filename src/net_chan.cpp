@@ -1,3 +1,6 @@
+#include <jampio/common/huffman.h>
+#include <jampio/common/msg.h>
+#include <jampio/common/protocol.h>
 #include "server.h"
 
 // TTimo: unused, commenting out to make gcc happy

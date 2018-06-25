@@ -9,8 +9,13 @@
 #include <jampio/common/g2/api.h>
 #include <jampio/common/g2/gore.h>
 #include <jampio/common/rmg/manager.h>
+#include <jampio/common/com_vars.h>
+#include <jampio/common/VM.h>
+#include <jampio/common/fs.h>
+#include <jampio/common/sharedTraps.h>
 #include "server.h"
 #include "navigator.h"
+#include "StaticArgs.h"
 
 botlib_export_t	*botlib_export;
 
@@ -75,7 +80,7 @@ void SV_GameSendServerCommand( int clientNum, const char *text ) {
 	if ( clientNum == -1 ) {
 		SV_SendServerCommand( NULL, "%s", text );
 	} else {
-		if ( clientNum < 0 || clientNum >= sv_maxclients->integer ) {
+		if ( clientNum < 0 || clientNum >= sv_maxclients->integer() ) {
 			return;
 		}
 		SV_SendServerCommand( svs.clients + clientNum, "%s", text );	
@@ -91,7 +96,7 @@ Disconnects the client with a message
 ===============
 */
 void SV_GameDropClient( int clientNum, const char *reason ) {
-	if ( clientNum < 0 || clientNum >= sv_maxclients->integer ) {
+	if ( clientNum < 0 || clientNum >= sv_maxclients->integer() ) {
 		return;
 	}
 	SV_DropClient( svs.clients + clientNum, reason );	
@@ -135,7 +140,7 @@ void SV_SetBrushModel( sharedEntity_t *ent, const char *name )
 		VectorCopy (maxs, ent->r.maxs);
 		ent->r.bmodel = qtrue;
 
-		if (com_RMG && com_RMG->integer)
+		if (com_RMG && com_RMG->integer())
 		{
 			ent->r.contents = CM_ModelContents( h, sv.mLocalSubBSPIndex );
 		}
@@ -294,11 +299,12 @@ SV_GetServerinfo
 
 ===============
 */
-void SV_GetServerinfo( char *buffer, int bufferSize ) {
+void SV_GetServerinfo(CvarSystem& cvars, char *buffer, int bufferSize) {
 	if ( bufferSize < 1 ) {
 		Com_Error( ERR_DROP, "SV_GetServerinfo: bufferSize == %i", bufferSize );
 	}
-	Q_strncpyz( buffer, Cvar_InfoString( CVAR_SERVERINFO ), bufferSize );
+	auto info = cvars.InfoString(CVAR_SERVERINFO);
+	Q_strncpyz( buffer, info.data(), bufferSize );
 }
 
 /*
@@ -356,7 +362,7 @@ SV_GetUsercmd
 ===============
 */
 void SV_GetUsercmd( int clientNum, usercmd_t *cmd ) {
-	if ( clientNum < 0 || clientNum >= sv_maxclients->integer ) {
+	if ( clientNum < 0 || clientNum >= sv_maxclients->integer() ) {
 		Com_Error( ERR_DROP, "SV_GetUsercmd: bad clientNum:%i", clientNum );
 	}
 	*cmd = svs.clients[clientNum].lastUsercmd;
@@ -379,14 +385,8 @@ SV_GameSystemCalls
 The module is making a system call
 ====================
 */
-//rcg010207 - see my comments in VM_DllSyscall(), in qcommon/vm.c ...
-#if ((defined __linux__) && (defined __powerpc__))
 #define VMA(x) ((void *) args[x])
-#else
-#define	VMA(x) VM_ArgPtr(args[x])
-#endif
-
-#define	VMF(x)	((float *)args)[x]
+#define	VMF(x) ((float *)args)[x]
 
 void SV_BotWaypointReception(int wpnum, wpobject_t **wps);
 void SV_BotCalculatePaths(int rmg);
@@ -404,6 +404,8 @@ sharedEntity_t gLocalModifier;
 
 sharedEntity_t *ConvertedEntity(sharedEntity_t *ent)
 { //Return an entity with the memory shifted around to allow reading/modifying VM memory
+	return ent;
+#if 0
 	int i = 0;
 
 	assert(ent);
@@ -432,13 +434,24 @@ sharedEntity_t *ConvertedEntity(sharedEntity_t *ent)
 	gLocalModifier.ghoul2 = ent->ghoul2;
 
 	return &gLocalModifier;
+#endif
 }
 
 siegePers_t sv_siegePersData = {qfalse, 0, 0};
 
 qhandle_t RE_RegisterServerSkin( const char *name );
 extern float g_svCullDist;
-int SV_GameSystemCalls( int *args ) {
+
+static void TrueMalloc(void **ptr, int size) {
+	*ptr = calloc(1, size);
+}
+
+static void TrueFree(void **ptr) {
+	free(*ptr);
+	*ptr = nullptr;
+}
+
+int SV_GameSystemCalls(CvarSystem& cvars, CommandBuffer& cbuf, int *args) {
 	switch( args[0] ) {
 
 	//rww - alright, DO NOT EVER add a GAME/CGAME/UI generic call without adding a trap to match, and
@@ -510,26 +523,26 @@ int SV_GameSystemCalls( int *args ) {
 			return r; //return the result
 		}
 	case G_CVAR_REGISTER:
-		Cvar_Register( (vmCvar_t *)VMA(1), (const char *)VMA(2), (const char *)VMA(3), args[4] ); 
+		cvars.Register( (vmCvar_t *)VMA(1), (const char *)VMA(2), (const char *)VMA(3), args[4] ); 
 		return 0;
 	case G_CVAR_UPDATE:
-		Cvar_Update( (vmCvar_t *)VMA(1) );
+		cvars.Update( (vmCvar_t *)VMA(1) );
 		return 0;
 	case G_CVAR_SET:
-		Cvar_Set( (const char *)VMA(1), (const char *)VMA(2) );
+		cvars.Set( (const char *)VMA(1), (const char *)VMA(2) );
 		return 0;
 	case G_CVAR_VARIABLE_INTEGER_VALUE:
-		return Cvar_VariableIntegerValue( (const char *)VMA(1) );
+		return cvars.VariableIntegerValue( (const char *)VMA(1) );
 	case G_CVAR_VARIABLE_STRING_BUFFER:
-		Cvar_VariableStringBuffer( (const char *)VMA(1), (char *)VMA(2), args[3] );
+		cvars.VariableStringBuffer( (const char *)VMA(1), (char *)VMA(2), args[3] );
 		return 0;
 	case G_ARGC:
-		return Cmd_Argc();
+		return StaticArgs::get().Argc();
 	case G_ARGV:
-		Cmd_ArgvBuffer( args[1], (char *)VMA(2), args[3] );
+		StaticArgs::get().ArgvBuffer( args[1], (char *)VMA(2), args[3] );
 		return 0;
 	case G_SEND_CONSOLE_COMMAND:
-		Cbuf_ExecuteText( args[1], (const char *)VMA(2) );
+		cbuf.ExecuteText( (cbufExec_t)args[1], (const char *)VMA(2) );
 		return 0;
 
 	case G_FS_FOPEN_FILE:
@@ -602,7 +615,7 @@ int SV_GameSystemCalls( int *args ) {
 		SV_GetUserinfo( args[1], (char *)VMA(2), args[3] );
 		return 0;
 	case G_GET_SERVERINFO:
-		SV_GetServerinfo( (char *)VMA(1), args[2] );
+		SV_GetServerinfo(cvars, (char *)VMA(1), args[2]);
 		return 0;
 	case G_ADJUST_AREA_PORTAL_STATE:
 		SV_AdjustAreaPortalState( (sharedEntity_t *)VMA(1), (qboolean)args[2] );
@@ -712,10 +725,10 @@ int SV_GameSystemCalls( int *args ) {
 
 	//rww - dynamic vm memory allocation!
 	case G_TRUEMALLOC:
-		VM_Shifted_Alloc((void **)VMA(1), args[2]);
+		TrueMalloc((void **)VMA(1), args[2]);
 		return 0;
 	case G_TRUEFREE:
-		VM_Shifted_Free((void **)VMA(1));
+		TrueFree((void **)VMA(1));
 		return 0;
 
 	//rww - icarus traps
@@ -1605,7 +1618,7 @@ int SV_GameSystemCalls( int *args ) {
 		return 0;
 
 	case G_RMG_INIT:
-		if (com_RMG && com_RMG->integer)
+		if (com_RMG && com_RMG->integer())
 		{
 			if (!TheRandomMissionManager)
 			{
@@ -1646,13 +1659,12 @@ SV_ShutdownGameProgs
 Called every time a map changes
 ===============
 */
-void SV_ShutdownGameProgs( void ) {
-	if ( !gvm ) {
+void SV_ShutdownGameProgs(void) {
+	if (!gvm) {
 		return;
 	}
-	VM_Call( gvm, GAME_SHUTDOWN, qfalse );
-	VM_Free( gvm );
-	gvm = NULL;
+	gvm->call(GAME_SHUTDOWN, qfalse);
+	gvm = nullptr;
 }
 
 /*
@@ -1662,19 +1674,17 @@ SV_InitGameVM
 Called for both a full init and a restart
 ==================
 */
-static void SV_InitGameVM( qboolean restart ) {
-	int		i;
-
+static void SV_InitGameVM(qboolean restart) {
 	// start the entity parsing at the beginning
 	sv.entityParsePoint = CM_EntityString();
 
 	// use the current msec count for a random seed
 	// init for this gamestate
-	VM_Call( gvm, GAME_INIT, svs.time, Com_Milliseconds(), restart );
+	gvm->call(GAME_INIT, svs.time, Com_Milliseconds(), restart);
 
 	// clear all gentity pointers that might still be set from
 	// a previous level
-	for ( i = 0 ; i < sv_maxclients->integer ; i++ ) {
+	for (int i = 0 ; i < sv_maxclients->integer(); i++) {
 		svs.clients[i].gentity = NULL;
 	}
 }
@@ -1688,15 +1698,15 @@ SV_RestartGameProgs
 Called on a map_restart, but not on a normal map change
 ===================
 */
-void SV_RestartGameProgs( void ) {
-	if ( !gvm ) {
+void SV_RestartGameProgs(CvarSystem& cvars, CommandBuffer& cbuf) {
+	if (!gvm) {
 		return;
 	}
-	VM_Call( gvm, GAME_SHUTDOWN, qtrue );
+	gvm->call(GAME_SHUTDOWN, qtrue);
 
 	// do a restart instead of a free
-	gvm = VM_Restart( gvm );
-	if ( !gvm ) { // bk001212 - as done below
+	gvm = VM::Create("jampgame", std::bind(SV_GameSystemCalls, cvars, cbuf, std::placeholders::_1));
+	if (!gvm) { // bk001212 - as done below
 		Com_Error( ERR_FATAL, "VM_Restart on game failed" );
 	}
 
@@ -1711,26 +1721,25 @@ SV_InitGameProgs
 Called on a normal map change, not on a map_restart
 ===============
 */
-void SV_InitGameProgs( void ) {
-	cvar_t	*var;
+void SV_InitGameProgs(CvarSystem& cvars, CommandBuffer& cbuf) {
 	//FIXME these are temp while I make bots run in vm
 	extern int	bot_enable;
 
-	var = Cvar_Get( "bot_enable", "1", CVAR_LATCH );
+	Cvar& var = cvars.Get( "bot_enable", "1", CVAR_LATCH );
 	if ( var ) {
-		bot_enable = var->integer;
+		bot_enable = var.integer();
 	}
 	else {
 		bot_enable = 0;
 	}
 
-	if ( !Cvar_VariableValue("fs_restrict") && !com_dedicated->integer && !Sys_CheckCD() ) 
+	if ( !cvars.VariableValue("fs_restrict") && !com_dedicated->integer() && !Sys_CheckCD() ) 
 	{
 		Com_Error( ERR_NEED_CD, SE_GetString("CON_TEXT_NEED_CD") ); //"Game CD not in drive" );		
 	}
 
 	// load the dll or bytecode
-	gvm = VM_Create( "jampgame", SV_GameSystemCalls, (vmInterpret_t)(int)Cvar_VariableValue( "vm_game" ) );
+	gvm = VM::Create("jampgame", std::bind(SV_GameSystemCalls, cvars, cbuf, std::placeholders::_1));
 	if ( !gvm ) {
 		Com_Error( ERR_FATAL, "VM_Create on game failed" );
 	}
@@ -1746,11 +1755,10 @@ SV_GameCommand
 See if the current console command is claimed by the game
 ====================
 */
-qboolean SV_GameCommand( void ) {
-	if ( sv.state != SS_GAME ) {
+qboolean SV_GameCommand(void) {
+	if (sv.state != SS_GAME) {
 		return qfalse;
 	}
-
-	return (qboolean)VM_Call( gvm, GAME_CONSOLE_COMMAND );
+	return (qboolean)gvm->call(GAME_CONSOLE_COMMAND);
 }
 
